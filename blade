@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+METADATA_URL="https://repository-cdn.liferay.com/nexus/content/repositories/liferay-public-releases/com/liferay/blade/com.liferay.blade.cli/maven-metadata.xml"
+JPM_RUN_URL="https://raw.githubusercontent.com/liferay/liferay-blade-cli/master/cli/installers/biz.aQute.jpm.run-4.0.0-20201026.162724-24.jar"
+BLADE_URL_PREFIX="https://repository-cdn.liferay.com/nexus/service/local/artifact/maven/content?r=liferay-public-releases&g=com.liferay.blade&a=com.liferay.blade.cli&v="
+
+blade_bin_dir() {
+    case "$(uname -s)" in
+        Darwin) printf '%s\n' "${HOME}/Library/PackageManager/bin" ;;
+        *) printf '%s\n' "${HOME}/jpm/bin" ;;
+    esac
+}
+
+latest_version() {
+    curl -fsSL "${METADATA_URL}" | sed -n 's:.*<latest>\(.*\)</latest>.*:\1:p' | head -n 1
+}
+
+release_version() {
+    curl -fsSL "${METADATA_URL}" | sed -n 's:.*<release>\(.*\)</release>.*:\1:p' | head -n 1
+}
+
+ensure_jpm_bootstrap() {
+    local bin_dir="$1"
+    local jpm_jar="$2"
+
+    if [ -x "${bin_dir}/jpm" ]; then
+        return 0
+    fi
+
+    mkdir -p "${bin_dir}"
+    java -jar "${jpm_jar}" -u init >/dev/null
+
+    if [ ! -x "${bin_dir}/jpm" ]; then
+        echo "failed to bootstrap JPM into ${bin_dir}" >&2
+        exit 1
+    fi
+}
+
+install_blade() {
+    local bin_dir="$1"
+    local version="$2"
+    local work_dir
+    work_dir="$(mktemp -d)"
+
+    trap 'rm -rf "${work_dir}"' EXIT
+
+    local jpm_jar="${work_dir}/jpm.run.jar"
+    local blade_jar="${work_dir}/bladelatest.jar"
+
+    curl -fsSL "${JPM_RUN_URL}" -o "${jpm_jar}"
+    ensure_jpm_bootstrap "${bin_dir}" "${jpm_jar}"
+
+    curl -fsSL "${BLADE_URL_PREFIX}${version}" -o "${blade_jar}"
+    "${bin_dir}/jpm" install -f "${blade_jar}"
+}
+
+main() {
+    local bin_dir
+    bin_dir="$(blade_bin_dir)"
+
+    if [ -x "${bin_dir}/blade" ]; then
+        exec "${bin_dir}/blade" "$@"
+    fi
+
+    local version
+    version="${BLADE_VERSION:-latest}"
+    if [ "${version}" = "latest" ]; then
+        version="$(latest_version)"
+        if [ -z "${version}" ]; then
+            version="$(release_version)"
+        fi
+    fi
+
+    if [ -z "${version}" ]; then
+        echo "unable to determine Blade version from Maven metadata" >&2
+        exit 1
+    fi
+
+    install_blade "${bin_dir}" "${version}"
+
+    if [ -x "${bin_dir}/blade" ]; then
+        exec "${bin_dir}/blade" "$@"
+    fi
+
+    echo "blade install completed, but executable was not found at ${bin_dir}/blade" >&2
+    exit 1
+}
+
+main "$@"

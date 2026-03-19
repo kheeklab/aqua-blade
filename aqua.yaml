@@ -1,0 +1,10 @@
+registries:
+  - name: local
+    type: local
+    path: registry.yaml
+
+packages:
+  # Sample config for local experimentation.
+  # The test script generates a release-pinned config automatically.
+  - name: blade@v1.0.0
+    registry: local

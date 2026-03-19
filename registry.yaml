@@ -1,0 +1,13 @@
+packages:
+  - name: blade
+    type: github_archive
+    repo_owner: kheeklab
+    repo_name: aqua-blade
+    files:
+      - name: blade
+        src: aqua-blade-{{trimV .Version}}/blade
+    description: Liferay Blade CLI wrapper that bootstraps the local JPM install
+    link: https://github.com/kheeklab/aqua-blade
+    supported_envs:
+      - darwin
+      - linux
